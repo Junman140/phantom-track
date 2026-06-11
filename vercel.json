@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/course-form.pdf",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/student-portal/registration.pdf",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/download/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
