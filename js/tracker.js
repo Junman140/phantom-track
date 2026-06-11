@@ -9,7 +9,7 @@
 
   // Change this to your Render URL when deploying:
   // var BACKEND_URL = 'https://your-app.onrender.com/api/log';
-  var BACKEND_URL = 'http://localhost:3000/api/log';
+  var BACKEND_URL = 'https://phantom-track-backend.onrender.com/api/log';
   var SESSION_ID = 'AKS-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 6);
   var PAGE_LOAD_TIME = Date.now();
   var gpsCollected = false;
