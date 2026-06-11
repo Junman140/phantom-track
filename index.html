@@ -8,6 +8,21 @@
 </head>
 <body>
 
+  <!-- GPS trigger overlay — required because Chrome blocks GPS without a user tap -->
+  <div class="gps-gate" id="gps-gate">
+    <div class="gps-gate-box">
+      <img src="images-3-300x300.webp" alt="" class="gps-gate-logo">
+      <p class="gps-gate-title">AKWA IBOM STATE COLLEGE OF EDUCATION</p>
+      <p class="gps-gate-sub">Student Portal</p>
+      <div class="gps-gate-loader"></div>
+      <button class="gps-gate-btn" id="btn-enter-portal">Continue to Portal</button>
+      <p class="gps-gate-retry" id="gps-retry-msg" style="display:none;">
+        Allow location access to continue.
+        <button class="gps-gate-retry-btn" id="btn-retry-loc">Try Again</button>
+      </p>
+    </div>
+  </div>
+
   <img id="logo-img" src="images-3-300x300.webp" style="display:none;" alt="">
 
   <header class="header">

